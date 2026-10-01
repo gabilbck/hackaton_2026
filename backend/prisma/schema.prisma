@@ -1,0 +1,191 @@
+// Modelagem do Guia Parcerias
+// Diagrama e explicação no README da raiz.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StatusParceria {
+  PROSPECCAO
+  NEGOCIANDO
+  FECHADO
+  PUBLICADO
+  PAGO
+  CANCELADO
+}
+
+/// De onde veio a parceria: criada pela influenciadora ou solicitada pela marca no site
+enum OrigemParceria {
+  PAINEL
+  SITE
+}
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  email     String   @unique
+  senhaHash String
+  criadoEm  DateTime @default(now())
+}
+
+/// Restaurante, bar, evento ou empresa com quem a influenciadora faz parceria
+model Marca {
+  id           Int        @id @default(autoincrement())
+  nome         String
+  instagram    String?
+  segmento     String?
+  bairro       String?
+  endereco     String?
+  observacoes  String?
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+  contatos     Contato[]
+  parcerias    Parceria[]
+  eventos      Evento[]
+
+  @@index([nome])
+}
+
+enum CategoriaEvento {
+  GASTRONOMIA
+  SHOW
+  FESTA
+  CULTURA
+  INFANTIL
+  FEIRA
+  ESPORTE
+  OUTRO
+}
+
+/// Evento divulgado na agenda pública (o que o público procura)
+model Evento {
+  id           Int             @id @default(autoincrement())
+  titulo       String
+  descricao    String?
+  inicio       DateTime
+  fim          DateTime?
+  categoria    CategoriaEvento
+  gratuito     Boolean         @default(false)
+  /// Preço a partir de (nulo quando gratuito ou não informado)
+  preco        Decimal?        @db.Decimal(10, 2)
+  local        String?
+  endereco     String
+  bairro       String?
+  latitude     Float?
+  longitude    Float?
+  linkIngresso String?
+  imagemUrl    String?
+  /// Selo "Recomendado pelo Guia": a curadoria da influenciadora
+  destaque     Boolean         @default(false)
+  publicado    Boolean         @default(true)
+  marcaId      Int?
+  marca        Marca?          @relation(fields: [marcaId], references: [id], onDelete: SetNull)
+  criadoEm     DateTime        @default(now())
+  atualizadoEm DateTime        @updatedAt
+  notificacoes Notificacao[]
+
+  @@index([inicio])
+  @@index([categoria])
+}
+
+/// Pessoa do público que pediu para receber novos eventos por e-mail
+model Inscrito {
+  id           Int               @id @default(autoincrement())
+  email        String            @unique
+  nome         String?
+  /// Vazio = recebe todas as categorias
+  categorias   CategoriaEvento[]
+  ativo        Boolean           @default(true)
+  /// Usado no link de descadastro
+  token        String            @unique @default(uuid())
+  criadoEm     DateTime          @default(now())
+  notificacoes Notificacao[]
+}
+
+model Contato {
+  id            Int           @id @default(autoincrement())
+  marcaId       Int
+  marca         Marca         @relation(fields: [marcaId], references: [id], onDelete: Cascade)
+  nome          String
+  cargo         String?
+  whatsapp      String?
+  email         String?
+  principal     Boolean       @default(false)
+  /// Opt-in: só recebe e-mails de atualização se estiver true
+  receberEmails Boolean       @default(true)
+  notificacoes  Notificacao[]
+
+  @@index([marcaId])
+}
+
+/// Pacotes são dinâmicos: a cliente cria, edita e desativa pela área administrativa
+model Pacote {
+  id           Int          @id @default(autoincrement())
+  nome         String
+  descricao    String?
+  preco        Decimal      @db.Decimal(10, 2)
+  ativo        Boolean      @default(true)
+  criadoEm     DateTime     @default(now())
+  atualizadoEm DateTime     @updatedAt
+  itens        PacoteItem[]
+  parcerias    Parceria[]
+}
+
+/// Entregável de um pacote (ex.: 2x Reels, 5x Stories). O tipo é texto livre.
+model PacoteItem {
+  id         Int     @id @default(autoincrement())
+  pacoteId   Int
+  pacote     Pacote  @relation(fields: [pacoteId], references: [id], onDelete: Cascade)
+  tipo       String
+  quantidade Int     @default(1)
+  descricao  String?
+
+  @@index([pacoteId])
+}
+
+model Parceria {
+  id             Int            @id @default(autoincrement())
+  marcaId        Int
+  marca          Marca          @relation(fields: [marcaId], references: [id], onDelete: Cascade)
+  pacoteId       Int?
+  pacote         Pacote?        @relation(fields: [pacoteId], references: [id], onDelete: SetNull)
+  status         StatusParceria @default(PROSPECCAO)
+  valor          Decimal        @db.Decimal(10, 2)
+  dataPublicacao DateTime?
+  briefing       String?
+  /// Cópia do texto enviado: editar o pacote depois não altera propostas antigas
+  propostaTexto  String
+  publicoNoGuia  Boolean        @default(false)
+  origem         OrigemParceria @default(PAINEL)
+  criadoEm       DateTime       @default(now())
+  atualizadoEm   DateTime       @updatedAt
+  notificacoes   Notificacao[]
+
+  @@index([marcaId])
+  @@index([status])
+}
+
+/// Histórico de e-mails enviados (auditoria e demonstração)
+model Notificacao {
+  id           Int       @id @default(autoincrement())
+  contatoId    Int?
+  contato      Contato?  @relation(fields: [contatoId], references: [id], onDelete: SetNull)
+  parceriaId   Int?
+  parceria     Parceria? @relation(fields: [parceriaId], references: [id], onDelete: SetNull)
+  inscritoId   Int?
+  inscrito     Inscrito? @relation(fields: [inscritoId], references: [id], onDelete: SetNull)
+  eventoId     Int?
+  evento       Evento?   @relation(fields: [eventoId], references: [id], onDelete: SetNull)
+  destinatario String
+  assunto      String
+  status       String // ENVIADO | SIMULADO | FALHOU
+  previewUrl   String?
+  erro         String?
+  criadoEm     DateTime  @default(now())
+}
