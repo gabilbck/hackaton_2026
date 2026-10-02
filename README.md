@@ -235,4 +235,5 @@ Commits no padrão [Conventional Commits](https://www.conventionalcommits.org/pt
 | ANA BEATRIZ PEDROZO |
 | GABRIELI EDUARDA LEMBECK |
 | LETÍCIA DE ABREU |
+| MARIA HELENA DE OLIVEIRA LOTIN |
 | THUANY CORREA LEITE |
